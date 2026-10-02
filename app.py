@@ -10,10 +10,14 @@ predictor=Predictor(os.environ.get('MAOMAO_MODEL_DIR'),device='cuda' if os.envir
 EXAMPLE=(HERE/'example.json').read_text()
 HEADERS=['#','事件 / Event','原始 / Raw','校正 / Calibrated','等待(h) / Wait','1h (raw)','6h (raw)','24h (raw)']
 
-@spaces.GPU(duration=30)
+@spaces.GPU(duration=5)
+def gpu_predict(text,calibration,custom):
+    return predictor.predict(text,calibration,custom)
+
 def predict(text,calibration,custom):
     try:
-        result=predictor.predict(text,calibration,custom)
+        predictor.encode(text)
+        result=gpu_predict(text,calibration,custom)
     except (ValueError,KeyError,TypeError,json.JSONDecodeError) as e:
         raise gr.Error(str(e))
     table=[[r['rank'],r['event'],round(r['raw'],6),round(r['calibrated'],6),round(r['wait_hours'],3),round(r['risk_1h_raw'],6),round(r['risk_6h_raw'],6),round(r['risk_24h_raw'],6)] for r in result['next_event']]
