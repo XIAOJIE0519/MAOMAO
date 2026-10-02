@@ -36,6 +36,7 @@ footer { display: none !important; }
 .gradio-container label, .gradio-container .block-label {
   font-family: var(--font) !important;
 }
+.gradio-container button { font-size: 16px; }
 .gradio-container .block-label { letter-spacing: 0; }
 .gradio-container .prose code {
   font-family: var(--font-mono);
@@ -75,7 +76,7 @@ footer { display: none !important; }
 }
 .results-scroll h3, .gradio-container section h3 {
   font-family: var(--font);
-  font-size: 21px;
+  font-size: 21px !important;
   font-weight: 600;
   line-height: 1.4;
   margin: 28px 0 14px;
