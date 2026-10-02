@@ -26,22 +26,40 @@ def predict(text, calibration, custom, language='en'):
         json.dump(result, fd, indent=2)
     return table_html(result, language), result, fd.name, result
 
-with gr.Blocks(title='MAOMAO', theme=gr.themes.Soft(primary_hue='blue'), css='footer{display:none!important}.results-scroll{overflow-x:auto}.results-table{width:100%;border-collapse:collapse;font-size:14px}.results-table th,.results-table td{padding:10px 12px;text-align:left;border-bottom:1px solid #dce3ee;white-space:nowrap}.results-table th{background:#eef4fb}.results-table tbody tr:nth-child(even){background:#f7f9fc}') as demo:
+theme = gr.themes.Default(
+    primary_hue='blue', neutral_hue='slate',
+    font=['Arial', 'Helvetica Neue', 'Liberation Sans', 'Noto Sans CJK SC', 'Microsoft YaHei', 'sans-serif'],
+    font_mono=['DejaVu Sans Mono', 'Consolas', 'Liberation Mono', 'monospace'],
+).set(
+    body_text_size='16px', body_text_color='#172636', body_text_color_subdued='#435468',
+    body_background_fill='#ffffff', background_fill_primary='#ffffff',
+    background_fill_secondary='#f5f7fa', block_background_fill='#ffffff',
+    block_label_text_size='15px', block_label_text_weight='600',
+    block_label_text_color='#233b53', block_title_text_size='17px',
+    button_large_text_size='16px', button_large_text_weight='600',
+    button_primary_background_fill='#234a70', button_primary_background_fill_hover='#183955',
+    button_secondary_background_fill='#f0f4f8', button_secondary_text_color='#233b53',
+    button_secondary_background_fill_hover='#e4ebf2',
+    input_background_fill='#ffffff', input_text_size='16px',
+    block_shadow='none',
+)
+
+with gr.Blocks(title='MAOMAO', theme=theme, css=(HERE / 'styles.css').read_text()) as demo:
     cached = gr.State(None)
     t = TEXT['en']
     with gr.Row():
-        title = gr.Markdown('# MAOMAO\n' + t['subtitle'])
+        title = gr.Markdown('# MAOMAO\n' + t['subtitle'], elem_id='app-title')
         language = gr.Dropdown([('🌐 English', 'en'), ('🌐 中文', 'zh')], value='en', show_label=False, container=False, scale=0, min_width=145, filterable=False, elem_id='language-switch')
     links = gr.Markdown(t['links'])
     with gr.Row():
         with gr.Column():
-            text = gr.Code(value=EXAMPLE, language='json', label=t['input'], lines=13)
+            text = gr.Code(value=EXAMPLE, language='json', label=t['input'], lines=13, max_lines=18, wrap_lines=True)
             schema = gr.Markdown(t['schema'])
             example = gr.Button(t['example'])
         with gr.Column():
             with gr.Accordion(t['calibration'], open=True) as calibration_panel:
                 calibration = gr.Dropdown(choices(list(predictor.calibrations), 'en'), value='None', label=t['dataset'], filterable=False)
-                custom = gr.Code(value='{"temperature":1.0}', language='json', label=t['custom'], lines=3)
+                custom = gr.Code(value='{"temperature":1.0}', language='json', label=t['custom'], lines=3, max_lines=6, wrap_lines=True)
                 calibration_help = gr.Markdown(t['cal_help'])
             run = gr.Button(t['run'], variant='primary')
     table = gr.HTML(value=table_html(None, 'en'))

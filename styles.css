@@ -1,0 +1,110 @@
+/* Research interface: readable native fonts, explicit hierarchy, strong contrast. */
+footer { display: none !important; }
+.gradio-container {
+  --font: Arial, "Helvetica Neue", "Liberation Sans", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "DejaVu Sans Mono", Consolas, "Liberation Mono", monospace;
+  font-family: var(--font) !important;
+  font-size: 16px;
+  color: #172636;
+  max-width: 1180px !important;
+  padding: 28px 32px !important;
+  line-height: 1.6;
+}
+.gradio-container .prose p {
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.65;
+  max-width: 72ch;
+  color: var(--body-text-color);
+}
+#app-title h1 {
+  font-family: var(--font);
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin-bottom: 12px;
+}
+#app-title p { font-size: 17px; line-height: 1.5; }
+.gradio-container .prose a {
+  color: #234a70;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.gradio-container button, .gradio-container input,
+.gradio-container label, .gradio-container .block-label {
+  font-family: var(--font) !important;
+}
+.gradio-container .block-label { letter-spacing: 0; }
+.gradio-container .prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--body-text-color);
+  background: var(--background-fill-secondary);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+/* CodeMirror's pastel syntax and 12px default made the JSON hard to read. */
+.gradio-container .cm-editor,
+.gradio-container .cm-content, .gradio-container .cm-line {
+  font-family: var(--font-mono) !important;
+  font-size: 15px !important;
+  line-height: 1.65 !important;
+  font-weight: 400;
+}
+.gradio-container .cm-editor { background: #ffffff !important; }
+.gradio-container .cm-content, .gradio-container .cm-line,
+.gradio-container .cm-line span {
+  color: #213549 !important;
+  -webkit-text-fill-color: #213549 !important;
+}
+.gradio-container .cm-gutters {
+  background: #f5f7fa !important;
+  color: #5c6c7c !important;
+  font-family: var(--font-mono) !important;
+  font-size: 13px !important;
+  border-right: 1px solid #dce3e9;
+}
+.gradio-container .cm-cursor { border-left-color: #234a70 !important; }
+.gradio-container .cm-focused .cm-selectionBackground { background: #c8dcf0 !important; }
+.results-scroll {
+  overflow-x: auto;
+  scrollbar-color: #91a1b2 #f0f4f8;
+  scrollbar-width: thin;
+}
+.results-scroll h3, .gradio-container section h3 {
+  font-family: var(--font);
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 28px 0 14px;
+}
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums lining-nums;
+  line-height: 1.5;
+  color: #172636;
+  background: #ffffff;
+}
+.results-table th, .results-table td {
+  padding: 12px;
+  text-align: right;
+  border-bottom: 1px solid #dce3e9;
+  white-space: nowrap;
+}
+.results-table th { font-size: 15px; font-weight: 600; background: #edf2f7; color: #233b53; }
+.results-table th:nth-child(2), .results-table td:nth-child(2) { text-align: left; }
+.results-table tbody tr:nth-child(even) { background: #f7f9fb; }
+.gradio-container :focus-visible { outline: 2px solid #326ba3; outline-offset: 3px; }
+.gradio-container ::selection { background: #c8dcf0; color: #172636; }
+.dark .gradio-container .prose a { color: #a6c9ed; }
+@media (max-width: 640px) {
+  .gradio-container { padding: 20px 16px !important; }
+  #app-title h1 { font-size: 28px; }
+  #app-title p { font-size: 16px; }
+  .results-table th, .results-table td { padding: 10px; }
+}
