@@ -1,4 +1,5 @@
 """Interface translations; machine-readable input/output keys stay stable."""
+from math import floor, log10
 TEXT = {
 'en': {
 'subtitle':'Multi-horizon Anticipatory Outcome Model for Anesthesia and Operations',
@@ -8,7 +9,7 @@ TEXT = {
 'example':'Load example','calibration':'Calibration','dataset':'Dataset','custom':'Custom parameters',
 'cal_help':'`p = softmax((logits + bias) / temperature)`\n\nPresets are source-specific. Fit locally for a new source. Only next-event scores are calibrated; waiting time and horizon outputs remain raw.',
 'run':'Predict','table':'Top 10 events',
-'headers':['#','Event','Raw','Calibrated','Wait (h)','1h (raw)','6h (raw)','24h (raw)'],
+'headers':['#','Event','Raw','Calibrated','Wait (h / min)','1h (raw)','6h (raw)','24h (raw)'],
 'output_help':'Next-event relative probabilities sum to 1; they are not independent concurrent-event risks.',
 'full':'Full output','json':'JSON','download':'Download JSON','none':'No calibration','custom_choice':'Custom',
 'error':'Invalid input. Check the JSON format, vocabulary tokens, numeric ranges and calibration parameters.'},
@@ -20,7 +21,7 @@ TEXT = {
 'example':'加载示例','calibration':'校准','dataset':'数据来源','custom':'自定义参数',
 'cal_help':'`p = softmax((logits + bias) / temperature)`\n\n预设仅对应其数据来源；新来源需本地拟合。仅校准下一事件概率，等待时间与各时域输出保持原始值。',
 'run':'预测','table':'概率最高的 10 项事件',
-'headers':['序号','事件','原始概率','校准概率','等待（小时）','1小时（原始）','6小时（原始）','24小时（原始）'],
+'headers':['序号','事件','原始概率','校准概率','等待（h / min）','1小时（原始）','6小时（原始）','24小时（原始）'],
 'output_help':'下一事件的相对概率总和为 1，不代表各事件独立发生的并发风险。',
 'full':'完整输出','json':'JSON 数据','download':'下载 JSON','none':'不校准','custom_choice':'自定义',
 'error':'输入无效，请检查 JSON 格式、词表名称、数值范围及校准参数。'}
@@ -42,9 +43,21 @@ def event_name(name, language):
         return '急性' + {'sbp':'收缩压','map':'平均动脉压','heart_rate':'心率','hemoglobin':'血红蛋白'}[feature] + {'drop':'下降','rise':'升高'}[direction]
     raise KeyError('Missing event translation: ' + name)
 
+def probability_percent(value):
+    """Show three significant digits, including trailing zeros, in percent units."""
+    percentage = float(format(value * 100, '.3g'))
+    if percentage == 0:
+        return '0.00%'
+    decimals = max(0, 2 - floor(log10(abs(percentage))))
+    return f'{percentage:.{decimals}f}%'
+
 def rows(result, language):
     if not result: return []
-    return [[r['rank'],event_name(r['event'],language),round(r['raw'],6),round(r['calibrated'],6),round(r['wait_hours'],3),round(r['risk_1h_raw'],6),round(r['risk_6h_raw'],6),round(r['risk_24h_raw'],6)] for r in result['next_event']]
+    return [[r['rank'], event_name(r['event'], language),
+             probability_percent(r['raw']), probability_percent(r['calibrated']),
+             f"{r['wait_hours']:.3f} h / {r['wait_hours'] * 60:.1f} min",
+             probability_percent(r['risk_1h_raw']), probability_percent(r['risk_6h_raw']),
+             probability_percent(r['risk_24h_raw'])] for r in result['next_event']]
 
 def choices(presets, language):
     t = TEXT[language]
