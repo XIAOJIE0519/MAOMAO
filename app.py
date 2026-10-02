@@ -16,7 +16,7 @@ def gpu_predict(text,calibration,custom):
 
 def predict(text,calibration,custom):
     try:
-        predictor.encode(text)
+        predictor.encode(text,device='cpu')
         result=gpu_predict(text,calibration,custom)
     except (ValueError,KeyError,TypeError,json.JSONDecodeError) as e:
         raise gr.Error(str(e))

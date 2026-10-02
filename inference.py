@@ -24,7 +24,7 @@ class Predictor:
         self.model.to(device)
         self.calibrations=json.loads((self.path/'calibrations.json').read_text())
 
-    def encode(self,payload):
+    def encode(self,payload,device=None):
         if isinstance(payload,str):payload=json.loads(payload)
         if not isinstance(payload,dict):raise ValueError('Input must be a JSON object / 输入必须是 JSON 对象')
         rows=payload.get('events',[])
@@ -74,7 +74,7 @@ class Predictor:
             'phase_id':phases[start:],'observation_features':observations[start:],'attention_mask':[True]*len(selected),
             'history_family_counts':np.log1p(count).tolist(),'static':static}
         integer={'token_id','token_kind','phase_id'}
-        return {k:torch.tensor(v,dtype=torch.long if k in integer else torch.bool if k=='attention_mask' else torch.float32,device=self.device).unsqueeze(0) for k,v in batch.items()}
+        return {k:torch.tensor(v,dtype=torch.long if k in integer else torch.bool if k=='attention_mask' else torch.float32,device=device or self.device).unsqueeze(0) for k,v in batch.items()}
 
     @torch.inference_mode()
     def predict(self,payload,calibration='None',custom=None,top_k=10):
