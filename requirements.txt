@@ -1,0 +1,7 @@
+torch==2.8.0
+gradio==5.50.0
+spaces
+huggingface_hub>=0.34
+safetensors>=0.6
+numpy
+scipy

@@ -1,0 +1,7 @@
+{
+  "source_checkpoint_sha256": "99d98693d1f47e8af3af7665077cac21194d8ef67c3f93b36af06ed0278c4c8a",
+  "checkpoint_epoch": 7,
+  "weights_sha256": "222ba5e3ca0ed4ce9f9f34d59ccf1263d51165d0109f2c2bf6d86127853204f8",
+  "format": "weights only; no optimizer, patient records or patient IDs",
+  "model_name": "MAOMAO"
+}
