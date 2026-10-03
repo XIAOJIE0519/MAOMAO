@@ -89,88 +89,26 @@ python calibrate.py --logits logits.npy --labels labels.npy --groups patient_gro
 
 ## 技术与数学原理
 
-### 连续时间表示与历史记忆
-
-对于时间 $t_i$ 的 token $x_i$，表示由 token 类型 $k_i$、测量值 $v_i$、是否观测到数值的指示量 $m_i$、静态特征 $s$、阶段 $\phi_i$、监测特征 $o_i$ 和更早的事件家族计数 $c$ 共同构成：
-
-$$
-\begin{aligned}
-\mathbf u_i={}&E_x(x_i)+E_k(k_i)+P_v[\psi(v_i),m_i]\\
-&+\mathrm{CTE}(t_i,\Delta t_i)+P_s(s)+E_\phi(\phi_i)\\
-&+P_o(o_i)+P_c(\log(1+c)).
-\end{aligned}
-$$
-
-其中 $\psi(v)=\mathrm{clip}(\mathrm{sign}(v)\log(1+|v|),-12,12)$，$\Delta t_i=t_i-t_{i-1}$，$P$ 表示可学习投影。连续时间编码对绝对时间与相邻时间间隔的正弦/余弦特征进行投影，保留不规则时间戳，无需构造密集的五分钟输入网格。家族计数概括当前窗口之前的历史；监测特征包括近期观测密度，以及距某一家族上次观测的时间。
-
-### 相对时间注意力与并发事件屏蔽
-
-每个注意力头使用：
+MAOMAO 融合事件 token、连续时间、测量值、患者特征与紧凑历史记忆。相对时间注意力处理不规则时间间隔，因果屏蔽阻断未来位置，以及时间戳相同但彼此不同的事件：
 
 $$
 A_{ij}=\frac{\mathbf q_i^\top\mathbf k_j}{\sqrt{d_h}}+b(t_i-t_j)+M_{ij}.
 $$
 
-可学习偏置 $b$ 使用带符号的对数时间差和同时间指示量。对于未来位置，以及时间戳相同但彼此不同的 token，$M_{ij}=-\infty$；其余位置为零，token 仍可关注自身。因此，同时间事件不会因任意排列顺序而相互泄露信息，同时保留对更早观测的访问。
-
-### 下一事件层级预测与集合监督
-
-临床家族预测头参与每个具体事件或严重程度类别的评分：
-
-$$
-z_{i,e}=(W_e\mathbf h_i+b_e)_e+(W_f\mathbf h_i+b_f)_{f(e)},\qquad
-p_{i,e}=\frac{e^{z_{i,e}}}{\sum_{r=1}^{210}e^{z_{i,r}}}.
-$$
-
-$f(e)$ 将事件映射到家族；$Y_i$ 是下一个时间戳的已观察事件集合，训练使用：
+其中 $b$ 为可学习时间偏置，$M$ 为注意力屏蔽。下一事件预测融合具体事件与临床家族评分；当下一个时间戳包含多个事件时，模型学习事件集合 $Y_i$，避免任意选择单一目标：
 
 $$
 \mathcal L_{\mathrm{event},i}=-\log\sum_{e\in Y_i}p_{i,e}.
 $$
 
-这样既连接临床大类与具体事件，也避免将同时出现的多个结局强行设为一个任意目标。softmax 表示下一事件的相对概率，并非多个并发事件独立发生的风险。
-
-### 双时间尺度的事件特异性等待时间
-
-公开时间预测头采用 **0–2 小时的 24 个五分钟区间**、**2–24 小时的 44 个三十分钟区间**，并在 24 小时后接入对数正态残余时间尾部。对于事件 $e$ 和区间 $k$：
-
-$$
-q_{e,k}=\sigma(a_{e,k}),\qquad S_{e,k}=\prod_{j=1}^{k}(1-q_{e,j}),\qquad P_{e,k}=S_{e,k-1}q_{e,k}.
-$$
-
-设 $S_{e,0}=1$，$m_k$ 为区间中点，最后一个区间边界 $\tau_K=24$ 小时，残余等待时间 $R_e\sim\mathrm{LogNormal}(\mu_e,\sigma_e^2)$，解码使用：
-
-$$
-\widehat{\mathbb E}[\Delta t_e]=\sum_{k=1}^{K}P_{e,k}m_k
-+S_{e,K}\left(\tau_K+e^{\mu_e+\sigma_e^2/2}\right).
-$$
-
-实现中对尾部参数与解码等待时间设定数值边界，以保持稳定性。细时间区间刻画近期变化，较粗区间和尾部覆盖更长的等待时间。右删失 episode 使用生存项参与训练似然，不人为补造事件发生时间。
-
-### 多时域预测与辅助学习
-
-独立的 sigmoid 预测头估计 $H\in\lbrace 1,6,24\rbrace$ 小时内的事件发生情况：
-
-$$
-r_{e,H}=\sigma\left((W_H\mathbf h_i+b_H)_e\right).
-$$
-
-参考训练目标联合事件类别、事件家族、等待时间、未来轨迹、掩码 token 重建和掩码数值重建：
-
-$$
-\begin{aligned}
-\mathcal L={}&\mathcal L_{\mathrm{event}}+0.25\mathcal L_{\mathrm{family}}+\mathcal L_{\mathrm{time}}\\
-&+0.5\mathcal L_{\mathrm{trajectory}}+0.2\mathcal L_{\mathrm{masked\text{-}token}}\\
-&+0.1\mathcal L_{\mathrm{masked\text{-}value}}.
-\end{aligned}
-$$
-
-仅在相应目标可用时使用辅助监督，不把缺失测量当作临床零值。时域分数是独立输出，不由下一事件 softmax 概率累加得到。
-
-**创新设计要点。** MAOMAO 联合整合不规则连续时间输入、防止并发事件泄露的注意力屏蔽、事件与家族的层级预测、紧凑历史记忆，以及多分辨率事件时间预测。设计回答三个关联问题：**接下来可能发生什么、可能多久后发生，以及未来 1/6/24 小时内可能出现哪些事件**。实现与配置见 [model.py](model.py)、[inference.py](inference.py) 和 [config.json](config.json)。
+设计联合预测**接下来发生什么、可能多久后发生，以及未来 1/6/24 小时内可能出现哪些事件**。事件特异性等待时间采用 0–2 小时的五分钟细区间、2–24 小时的三十分钟粗区间和对数正态尾部；多时域预测与掩码重建目标支持共享学习。实现见 [model.py](model.py)。
 
 ## 研究用途与发布内容
 
 记录的事件包含临床决策，输出不代表治疗因果效应。等待时间误差和外部数据分布差异仍是局限。总览图汇总研究结果；回顾性终点结果不等同于前瞻性临床验证。
 
 权重以 SafeTensors 格式发布，不含患者记录、优化器状态或身份信息。见 [release_manifest.json](release_manifest.json)。
+
+## 贡献者
+
+Shanjie Luan and Yunkun Shi
