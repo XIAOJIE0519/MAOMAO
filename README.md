@@ -95,7 +95,7 @@ $$
 A_{ij}=\frac{\mathbf q_i^\top\mathbf k_j}{\sqrt{d_h}}+b(t_i-t_j)+M_{ij}.
 $$
 
-Here $b$ is a learned time bias and $M$ is the attention mask. Event and clinical-family scores are combined for next-event prediction. When several events occur at the next timestamp, the model learns from their set $Y_i$ rather than selecting one arbitrary target:
+Here `b` is a learned time bias and `M` is the attention mask. Event and clinical-family scores are combined for next-event prediction. When several events occur at the next timestamp, the model learns from their set `Y_i` rather than selecting one arbitrary target:
 
 $$
 \mathcal L_{\mathrm{event},i}=-\log\sum_{e\in Y_i}p_{i,e}.
