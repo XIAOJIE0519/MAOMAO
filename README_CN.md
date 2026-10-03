@@ -68,7 +68,7 @@ result = predictor.predict(Path("example.json").read_text(), calibration="None")
 校准仅调整下一事件的概率分布：
 
 $$
-p^{\mathrm{cal}}_e=\operatorname{softmax}\!\left(\frac{\mathbf z+\mathbf b}{T}\right)_e,\qquad T>0.
+p^{\mathrm{cal}}_e=\mathrm{softmax}\left(\frac{\mathbf z+\mathbf b}{T}\right)_e,\qquad T>0.
 $$
 
 可选择数据来源预设，或选择 **Custom**，提供 `temperature` 和可选的 210 项 `bias`。预设仅适用于对应来源分布，不代表模型已在新医院得到验证。`None` 保留原始概率。
@@ -96,12 +96,12 @@ python calibrate.py --logits logits.npy --labels labels.npy --groups patient_gro
 $$
 \begin{aligned}
 \mathbf u_i={}&E_x(x_i)+E_k(k_i)+P_v[\psi(v_i),m_i]\\
-&+\operatorname{CTE}(t_i,\Delta t_i)+P_s(s)+E_\phi(\phi_i)\\
+&+\mathrm{CTE}(t_i,\Delta t_i)+P_s(s)+E_\phi(\phi_i)\\
 &+P_o(o_i)+P_c(\log(1+c)).
 \end{aligned}
 $$
 
-其中 $\psi(v)=\operatorname{clip}(\operatorname{sign}(v)\log(1+|v|),-12,12)$，$\Delta t_i=t_i-t_{i-1}$，$P$ 表示可学习投影。连续时间编码对绝对时间与相邻时间间隔的正弦/余弦特征进行投影，保留不规则时间戳，无需构造密集的五分钟输入网格。家族计数概括当前窗口之前的历史；监测特征包括近期观测密度，以及距某一家族上次观测的时间。
+其中 $\psi(v)=\mathrm{clip}(\mathrm{sign}(v)\log(1+|v|),-12,12)$，$\Delta t_i=t_i-t_{i-1}$，$P$ 表示可学习投影。连续时间编码对绝对时间与相邻时间间隔的正弦/余弦特征进行投影，保留不规则时间戳，无需构造密集的五分钟输入网格。家族计数概括当前窗口之前的历史；监测特征包括近期观测密度，以及距某一家族上次观测的时间。
 
 ### 相对时间注意力与并发事件屏蔽
 
@@ -138,7 +138,7 @@ $$
 q_{e,k}=\sigma(a_{e,k}),\qquad S_{e,k}=\prod_{j=1}^{k}(1-q_{e,j}),\qquad P_{e,k}=S_{e,k-1}q_{e,k}.
 $$
 
-设 $S_{e,0}=1$，$m_k$ 为区间中点，最后一个区间边界 $\tau_K=24$ 小时，残余等待时间 $R_e\sim\operatorname{LogNormal}(\mu_e,\sigma_e^2)$，解码使用：
+设 $S_{e,0}=1$，$m_k$ 为区间中点，最后一个区间边界 $\tau_K=24$ 小时，残余等待时间 $R_e\sim\mathrm{LogNormal}(\mu_e,\sigma_e^2)$，解码使用：
 
 $$
 \widehat{\mathbb E}[\Delta t_e]=\sum_{k=1}^{K}P_{e,k}m_k
@@ -149,10 +149,10 @@ $$
 
 ### 多时域预测与辅助学习
 
-独立的 sigmoid 预测头估计 $H\in\{1,6,24\}$ 小时内的事件发生情况：
+独立的 sigmoid 预测头估计 $H\in\lbrace 1,6,24\rbrace$ 小时内的事件发生情况：
 
 $$
-r_{e,H}=\sigma\!\left((W_H\mathbf h_i+b_H)_e\right).
+r_{e,H}=\sigma\left((W_H\mathbf h_i+b_H)_e\right).
 $$
 
 参考训练目标联合事件类别、事件家族、等待时间、未来轨迹、掩码 token 重建和掩码数值重建：

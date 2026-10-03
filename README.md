@@ -68,7 +68,7 @@ result = predictor.predict(Path("example.json").read_text(), calibration="None")
 Only the next-event distribution is calibrated:
 
 $$
-p^{\mathrm{cal}}_e=\operatorname{softmax}\!\left(\frac{\mathbf z+\mathbf b}{T}\right)_e,\qquad T>0.
+p^{\mathrm{cal}}_e=\mathrm{softmax}\left(\frac{\mathbf z+\mathbf b}{T}\right)_e,\qquad T>0.
 $$
 
 Select a dataset preset, or select **Custom** and supply `temperature` and an optional 210-element `bias`. Presets apply to their source distributions and do not establish validity at a new hospital. `None` retains raw probabilities.
@@ -96,12 +96,12 @@ For token $x_i$ at time $t_i$, the representation combines token kind $k_i$, mea
 $$
 \begin{aligned}
 \mathbf u_i={}&E_x(x_i)+E_k(k_i)+P_v[\psi(v_i),m_i]\\
-&+\operatorname{CTE}(t_i,\Delta t_i)+P_s(s)+E_\phi(\phi_i)\\
+&+\mathrm{CTE}(t_i,\Delta t_i)+P_s(s)+E_\phi(\phi_i)\\
 &+P_o(o_i)+P_c(\log(1+c)).
 \end{aligned}
 $$
 
-Here $\psi(v)=\operatorname{clip}(\operatorname{sign}(v)\log(1+|v|),-12,12)$, $\Delta t_i=t_i-t_{i-1}$, and $P$ denotes learned projections. Continuous-time encoding projects sine/cosine features of absolute time and time gaps. This preserves irregular timestamps without a dense five-minute input grid. Family-count memory summarizes history before the current window; monitoring features include recent observation density and time since a family's last observation.
+Here $\psi(v)=\mathrm{clip}(\mathrm{sign}(v)\log(1+|v|),-12,12)$, $\Delta t_i=t_i-t_{i-1}$, and $P$ denotes learned projections. Continuous-time encoding projects sine/cosine features of absolute time and time gaps. This preserves irregular timestamps without a dense five-minute input grid. Family-count memory summarizes history before the current window; monitoring features include recent observation density and time since a family's last observation.
 
 ### Relative-time attention and concurrent-event masking
 
@@ -138,7 +138,7 @@ $$
 q_{e,k}=\sigma(a_{e,k}),\qquad S_{e,k}=\prod_{j=1}^{k}(1-q_{e,j}),\qquad P_{e,k}=S_{e,k-1}q_{e,k}.
 $$
 
-With $S_{e,0}=1$, bin midpoint $m_k$, final bin edge $\tau_K=24$ hours, and residual $R_e\sim\operatorname{LogNormal}(\mu_e,\sigma_e^2)$, decoding uses:
+With $S_{e,0}=1$, bin midpoint $m_k$, final bin edge $\tau_K=24$ hours, and residual $R_e\sim\mathrm{LogNormal}(\mu_e,\sigma_e^2)$, decoding uses:
 
 $$
 \widehat{\mathbb E}[\Delta t_e]=\sum_{k=1}^{K}P_{e,k}m_k
@@ -149,10 +149,10 @@ Tail parameters and decoded waits are bounded for numerical stability. Fine bins
 
 ### Multi-horizon and auxiliary learning
 
-Separate sigmoid heads predict event occurrence over $H\in\{1,6,24\}$ hours:
+Separate sigmoid heads predict event occurrence over $H\in\lbrace 1,6,24\rbrace$ hours:
 
 $$
-r_{e,H}=\sigma\!\left((W_H\mathbf h_i+b_H)_e\right).
+r_{e,H}=\sigma\left((W_H\mathbf h_i+b_H)_e\right).
 $$
 
 The reference training objective combines event identity, family, waiting time, future trajectories, masked-token reconstruction, and masked-value reconstruction:
