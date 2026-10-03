@@ -1,0 +1,256 @@
+#!/usr/bin/env python3
+"""Select and clean the NTUH intraoperative ECG records in surgery_part2.
+
+Requires unrar-free, numpy, h5py, and scipy. The source RAR is never modified.
+Only files under ``Raw ECG/*.mat`` are selected from the archive; annotation
+images and other archive entries are not extracted into the processed output.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+
+import h5py
+import numpy as np
+from scipy.signal import butter, sosfiltfilt
+
+
+DEFAULT_ARCHIVE = Path(
+    "data/surgery_part2/surgery/NTUH_Raw_Data_110/Raw_Data.rar"
+)
+DEFAULT_OUTPUT = Path("data/surgery_part2/processed_surgical_ecg")
+SAMPLE_RATE_HZ = 500.0
+MAX_NONFINITE_FRACTION = 0.001
+EXTREME_AMPLITUDE_THRESHOLD = 10.0
+MAX_EXTREME_AMPLITUDE_FRACTION = 0.01
+
+
+def list_selected_entries(unrar: str, archive: Path) -> list[str]:
+    result = subprocess.run(
+        [unrar, "--list", str(archive)],
+        check=True,
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    entries = []
+    for line in result.stdout.splitlines():
+        entry = line.strip()
+        if entry.startswith("Raw ECG/") and entry.lower().endswith(".mat"):
+            entries.append(entry)
+    if not entries:
+        raise RuntimeError("RAR archive contains no Raw ECG/*.mat files")
+    if len(entries) != len(set(entries)):
+        raise RuntimeError("RAR listing contains duplicate Raw ECG paths")
+    return sorted(entries)
+
+
+def read_ecg(mat_path: Path) -> tuple[np.ndarray, str]:
+    with h5py.File(mat_path, "r") as f:
+        if "ECG" not in f or not isinstance(f["ECG"], h5py.Dataset):
+            raise ValueError("missing root ECG dataset")
+        ds = f["ECG"]
+        if ds.ndim != 2 or 1 not in ds.shape:
+            raise ValueError(f"expected a row/column vector, got shape {ds.shape}")
+        if not np.issubdtype(ds.dtype, np.number):
+            raise ValueError(f"ECG is not numeric: {ds.dtype}")
+        signal = np.asarray(ds[()]).reshape(-1).astype(np.float64, copy=False)
+        dtype = str(ds.dtype)
+    if signal.size < int(SAMPLE_RATE_HZ * 60):
+        raise ValueError(f"recording shorter than 60 seconds: {signal.size} samples")
+    return signal, dtype
+
+
+def clean_signal(signal: np.ndarray) -> tuple[np.ndarray, int, int, float]:
+    valid = np.isfinite(signal)
+    invalid_count = int(signal.size - valid.sum())
+    if not valid.any():
+        raise ValueError("ECG contains no finite samples")
+    if invalid_count / signal.size > MAX_NONFINITE_FRACTION:
+        raise ValueError(
+            f"non-finite fraction {invalid_count / signal.size:.6%} exceeds "
+            f"{MAX_NONFINITE_FRACTION:.3%}"
+        )
+    if invalid_count:
+        valid_positions = np.flatnonzero(valid)
+        invalid_positions = np.flatnonzero(~valid)
+        signal = signal.copy()
+        signal[invalid_positions] = np.interp(
+            invalid_positions, valid_positions, signal[valid_positions]
+        )
+    # Preserve the native 500 Hz grid. Remove baseline drift and high-frequency
+    # noise with a zero-phase fourth-order 0.5–40 Hz Butterworth bandpass.
+    sos = butter(4, (0.5, 40.0), btype="bandpass", fs=SAMPLE_RATE_HZ, output="sos")
+    filtered = sosfiltfilt(sos, signal)
+    artifact_mask = np.abs(filtered) > EXTREME_AMPLITUDE_THRESHOLD
+    artifact_count = int(artifact_mask.sum())
+    artifact_fraction = artifact_count / filtered.size
+    if artifact_fraction > MAX_EXTREME_AMPLITUDE_FRACTION:
+        raise ValueError(
+            f"extreme-amplitude artifact fraction {artifact_fraction:.6%} exceeds "
+            f"{MAX_EXTREME_AMPLITUDE_FRACTION:.1%}"
+        )
+    if artifact_count:
+        good_positions = np.flatnonzero(~artifact_mask)
+        artifact_positions = np.flatnonzero(artifact_mask)
+        filtered[artifact_positions] = np.interp(
+            artifact_positions, good_positions, filtered[good_positions]
+        )
+    cleaned = filtered.astype(np.float32, copy=False)
+    return cleaned, invalid_count, artifact_count, artifact_fraction
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--archive", type=Path, default=DEFAULT_ARCHIVE)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--unrar", default=shutil.which("unrar-free"),
+        help="path to unrar-free executable (default: search PATH)",
+    )
+    args = parser.parse_args()
+    if not args.archive.is_file():
+        parser.error(f"archive not found: {args.archive}")
+    if not args.unrar:
+        parser.error("unrar-free is required to read the RAR archive")
+
+    selected_entries = list_selected_entries(args.unrar, args.archive)
+    args.output.mkdir(parents=True, exist_ok=True)
+    cleaned_dir = args.output / "ecg_float32_500hz_bandpass_0p5_40hz"
+    cleaned_dir.mkdir(parents=True, exist_ok=True)
+    # This directory is generated by this script. Remove stale per-case arrays
+    # so that a rerun cannot leave behind records excluded by the current QC.
+    for stale in cleaned_dir.glob("*.npy"):
+        stale.unlink()
+
+    with tempfile.TemporaryDirectory(prefix="surgery_part2_selected_") as tmp:
+        extract_dir = Path(tmp)
+        extraction = subprocess.run(
+            [args.unrar, str(args.archive), *selected_entries, str(extract_dir)],
+            capture_output=True,
+            text=True,
+            errors="replace",
+        )
+        if extraction.returncode != 0:
+            raise RuntimeError(
+                "unrar-free extraction failed; last output:\n"
+                + extraction.stdout[-3000:]
+                + extraction.stderr[-3000:]
+            )
+
+        rows: list[dict[str, object]] = []
+        for entry in selected_entries:
+            rel = Path(entry)
+            mat_path = extract_dir / rel
+            row: dict[str, object] = {
+                "record_id": mat_path.stem,
+                "source_entry": entry,
+                "inclusion_reason": "Raw ECG record from the NTUH anesthesia/surgery cohort",
+                "sampling_rate_hz": SAMPLE_RATE_HZ,
+                "cleaned_signal": "",
+                "status": "excluded_qc",
+                "qc_message": "",
+            }
+            try:
+                raw, raw_dtype = read_ecg(mat_path)
+                cleaned, repaired, artifact_samples, artifact_fraction = clean_signal(raw)
+                out_path = cleaned_dir / f"{mat_path.stem}.npy"
+                np.save(out_path, cleaned, allow_pickle=False)
+                duration_s = raw.size / SAMPLE_RATE_HZ
+                row.update(
+                    {
+                        "status": "included",
+                        "qc_message": "",
+                        "raw_dtype": raw_dtype,
+                        "sample_count": int(raw.size),
+                        "duration_seconds": round(duration_s, 3),
+                        "duration_hours": round(duration_s / 3600, 4),
+                        "raw_nonfinite_samples": repaired,
+                        "raw_nonfinite_fraction": repaired / raw.size,
+                        "extreme_amplitude_samples_interpolated": artifact_samples,
+                        "extreme_amplitude_fraction": artifact_fraction,
+                        "raw_min": float(np.nanmin(raw)),
+                        "raw_max": float(np.nanmax(raw)),
+                        "raw_mean": float(np.nanmean(raw)),
+                        "raw_std": float(np.nanstd(raw)),
+                        "cleaned_min": float(cleaned.min()),
+                        "cleaned_max": float(cleaned.max()),
+                        "cleaned_mean": float(cleaned.mean()),
+                        "cleaned_std": float(cleaned.std()),
+                        "cleaned_dtype": str(cleaned.dtype),
+                        "cleaned_signal": str(out_path.relative_to(args.output)),
+                    }
+                )
+            except Exception as exc:  # record per-case QC failures, continue cohort
+                row["qc_message"] = f"{type(exc).__name__}: {exc}"
+            rows.append(row)
+
+    fieldnames = sorted({key for row in rows for key in row})
+    manifest_path = args.output / "case_manifest.csv"
+    with manifest_path.open("w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    included = [row for row in rows if row["status"] == "included"]
+    excluded = [row for row in rows if row["status"] != "included"]
+    total_samples = sum(int(row["sample_count"]) for row in included)
+    summary = {
+        "dataset": "NTUH Raw Data 110",
+        "source_archive": str(args.archive),
+        "selection_rule": "Only Raw ECG/*.mat records; cohort documented as patients under anesthesia for surgery.",
+        "selected_records": len(selected_entries),
+        "included_records": len(included),
+        "excluded_after_qc": len(excluded),
+        "total_included_samples": total_samples,
+        "sampling_rate_hz": SAMPLE_RATE_HZ,
+        "total_included_duration_hours": round(total_samples / SAMPLE_RATE_HZ / 3600, 3),
+        "cleaning": {
+            "mat_schema": "MATLAB v7.3 HDF5 root ECG numeric vector",
+            "nonfinite_policy": f"Linear interpolation if at most {MAX_NONFINITE_FRACTION:.3%}; otherwise exclude record",
+            "filter": "zero-phase Butterworth 4th-order bandpass 0.5-40 Hz",
+            "artifact_policy": (
+                f"Interpolate filtered samples with absolute amplitude > {EXTREME_AMPLITUDE_THRESHOLD} "
+                f"in source numeric units when they are at most {MAX_EXTREME_AMPLITUDE_FRACTION:.1%} "
+                "of a record; otherwise exclude that recording"
+            ),
+            "output_dtype": "float32",
+            "resampling": "none; native 500 Hz retained",
+        },
+        "excluded_records": [
+            {"record_id": row["record_id"], "reason": row["qc_message"]}
+            for row in excluded
+        ],
+        "validation": {
+            "mat_schema_and_vector_shape": "checked per record",
+            "minimum_recording_length_seconds": 60,
+            "finite_values": "checked per record; small gaps interpolated",
+            "cleaned_array_dtype": "float32",
+            "saved_files_readback": "checked after writing",
+        },
+    }
+    summary_path = args.output / "quality_summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    # Read back every saved array for a final integrity and finiteness check.
+    readback_errors = []
+    for row in included:
+        saved = args.output / str(row["cleaned_signal"])
+        arr = np.load(saved, mmap_mode="r", allow_pickle=False)
+        if arr.dtype != np.float32 or arr.ndim != 1 or not np.isfinite(arr).all():
+            readback_errors.append(str(saved))
+    if readback_errors:
+        raise RuntimeError(f"cleaned output readback failed for {len(readback_errors)} cases")
+    if not included:
+        raise RuntimeError("no surgical records passed QC")
+    print(json.dumps({**summary, "manifest": str(manifest_path), "summary": str(summary_path)}, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,19 @@
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.venv*/
+venv/
+.env
+.env.*
 *.safetensors
 *.pt
+*.bin
 *.npy
-.env
+*.npz
+*.sqlite
+*.log
+checkpoints/
+outputs/
+# Keep only source adapters in the local data/ directory.
+/data/*
+!/data/*.py
